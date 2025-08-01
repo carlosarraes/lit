@@ -29,5 +29,8 @@ func ReadFile(input json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	
+	MarkFileAsRead(readFileInput.Path)
+	
 	return string(content), nil
 }

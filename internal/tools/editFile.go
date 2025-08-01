@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 )
 
 type EditFileInput struct {
@@ -15,14 +16,33 @@ type EditFileInput struct {
 }
 
 var (
+	readFilesMutex sync.RWMutex
+	readFiles      = make(map[string]bool)
+)
+
+func MarkFileAsRead(filePath string) {
+	readFilesMutex.Lock()
+	defer readFilesMutex.Unlock()
+	readFiles[filePath] = true
+}
+
+func hasBeenRead(filePath string) bool {
+	readFilesMutex.RLock()
+	defer readFilesMutex.RUnlock()
+	return readFiles[filePath]
+}
+
+var (
 	EditFileInputSchema = generateSchema[EditFileInput]()
 	EditFileDefinition  = ToolDefinition{
 		Name: "edit_file",
 		Description: `Make edits to a text file.
 
+IMPORTANT: You MUST use read_file first to see the current contents before editing any existing file. This tool will fail if you attempt to edit an existing file without reading it first.
+
 Replaces 'old_str' with 'new_str' in the given file. 'old_str' and 'new_str' MUST be different from each other.
 
-If the file specified with path doesn't exist, it will be created.
+If the file doesn't exist, it will be created (no need to read first for new files).
 `,
 		InputSchema: EditFileInputSchema,
 		Function:    EditFile,
@@ -45,6 +65,10 @@ func EditFile(input json.RawMessage) (string, error) {
 			return createNewFile(editFileInput.Path, editFileInput.NewStr)
 		}
 		return "", err
+	}
+
+	if !hasBeenRead(editFileInput.Path) {
+		return "", fmt.Errorf("ERROR: File '%s' exists but you haven't read it yet. You MUST use the read_file tool first to see the current contents before editing. This prevents accidental duplications or overwrites. Use: read_file with path '%s' then try edit_file again", editFileInput.Path, editFileInput.Path)
 	}
 
 	oldContent := string(content)
