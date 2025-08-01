@@ -23,12 +23,11 @@ func main() {
 		return scanner.Text(), true
 	}
 
-	tools := []tools.ToolDefinition{tools.ReadFileDefinition, tools.ListFilesDefinition}
+	tools := []tools.ToolDefinition{tools.ReadFileDefinition, tools.ListFilesDefinition, tools.EditFileDefinition}
+
 	agent := agent.NewAgent(&client, getUserMessage, tools)
 	if err := agent.Run(context.TODO()); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running agent: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Println("Client created successfully")
 }
