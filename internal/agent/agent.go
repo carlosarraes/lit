@@ -9,7 +9,7 @@ import (
 	"github.com/carlosarraes/lit/internal/tools"
 )
 
-const MODEL = "Haiku"
+const MODEL = "Lit"
 
 type Agent struct {
 	client         *anthropic.Client
