@@ -7,7 +7,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/carlosarraes/lit/internal/tools"
-	"github.com/carlosarraes/lit/internal/ui"
 )
 
 const MODEL = "Haiku"
@@ -89,15 +88,13 @@ func (a *Agent) executeTool(id, name string, input json.RawMessage) anthropic.Co
 		return anthropic.NewToolResultBlock(id, "tool not found", true)
 	}
 
-	var response string
-	err := ui.WithSpinner(fmt.Sprintf("\u001b[92mtool\u001b[0m: %s(%s)", name, input), func() error {
-		var err error
-		response, err = toolDef.Function(input)
-		return err
-	})
+	fmt.Printf("\u001b[92mtool\u001b[0m: %s(%s) ", name, input)
+	response, err := toolDef.Function(input)
 	if err != nil {
+		fmt.Println("❌")
 		return anthropic.NewToolResultBlock(id, err.Error(), true)
 	}
+	fmt.Println("✅")
 
 	return anthropic.NewToolResultBlock(id, response, false)
 }
