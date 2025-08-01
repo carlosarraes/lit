@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/invopop/jsonschema"
@@ -95,6 +96,42 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
+func withSpinner(message string, fn func() error) error {
+	fmt.Printf("%s ", message)
+	
+	done := make(chan bool)
+	started := make(chan bool)
+	go func() {
+		chars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		i := 0
+		started <- true
+		for {
+			select {
+			case <-done:
+				fmt.Print("\r\u001b[K")
+				return
+			default:
+				fmt.Printf("\r%s %s", message, chars[i%len(chars)])
+				i++
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+
+	<-started
+	err := fn()
+	done <- true
+	time.Sleep(50 * time.Millisecond)
+	
+	if err != nil {
+		fmt.Printf("\r%s ❌\n", message)
+	} else {
+		fmt.Printf("\r%s ✅\n", message)
+	}
+	
+	return err
+}
+
 func (a *Agent) executeTool(id, name string, input json.RawMessage) anthropic.ContentBlockParamUnion {
 	var toolDef ToolDefinition
 	var found bool
@@ -111,8 +148,13 @@ func (a *Agent) executeTool(id, name string, input json.RawMessage) anthropic.Co
 		return anthropic.NewToolResultBlock(id, "tool not found", true)
 	}
 
-	fmt.Printf("\u001b[92mtool\u001b[0m: %s(%s)\n", name, input)
-	response, err := toolDef.Function(input)
+	var response string
+	err := withSpinner(fmt.Sprintf("\u001b[92mtool\u001b[0m: %s(%s)", name, input), func() error {
+		var err error
+		response, err = toolDef.Function(input)
+		return err
+	})
+
 	if err != nil {
 		return anthropic.NewToolResultBlock(id, err.Error(), true)
 	}
