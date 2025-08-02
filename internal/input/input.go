@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/term"
@@ -23,6 +24,9 @@ type InteractiveInput struct {
 	completeWord string
 	lastAtPos    int
 	lastPartial  string
+	lastCtrlC    time.Time
+	multiLine    []string
+	inContinuation bool
 }
 
 func NewInteractiveInput() *InteractiveInput {
@@ -60,15 +64,47 @@ func (i *InteractiveInput) ReadLine() (string, error) {
 
 		switch {
 		case isCtrlC(key):
-			fmt.Println()
-			return "", io.EOF
+			if i.handleCtrlC() {
+				fmt.Println()
+				return "", io.EOF
+			}
 		case isEnter(key):
+			if i.checkLineContinuation() {
+				continue
+			}
+			
+			var result string
+			if len(i.multiLine) > 0 {
+				result = strings.Join(i.multiLine, " ") + " " + string(i.currentInput)
+				i.multiLine = []string{}
+			} else {
+				result = string(i.currentInput)
+			}
+			
+			i.inContinuation = false
+			
 			fmt.Print("\r\n")
-			return string(i.currentInput), nil
+			return result, nil
 		case isBackspace(key):
 			i.handleBackspace()
 		case isTab(key):
 			i.handleTab()
+		case isCtrlW(key):
+			i.handleCtrlW()
+		case isCtrlU(key):
+			i.handleCtrlU()
+		case isCtrlA(key):
+			i.handleCtrlA()
+		case isCtrlE(key):
+			i.handleCtrlE()
+		case isHome(key):
+			i.handleHome()
+		case isEnd(key):
+			i.handleEnd()
+		case isArrowLeft(key):
+			i.handleArrowLeft()
+		case isArrowRight(key):
+			i.handleArrowRight()
 		case isArrowUp(key) || isArrowDown(key):
 		case isEscape(key):
 			if i.inCompletion {
@@ -92,6 +128,7 @@ func (i *InteractiveInput) handleChar(ch rune) {
 		i.lastAtPos = -1
 		i.lastPartial = ""
 	}
+	i.lastCtrlC = time.Time{}
 	i.redrawLine()
 }
 
@@ -195,10 +232,17 @@ func (i *InteractiveInput) updateCompletions() {
 
 func (i *InteractiveInput) redrawLine() {
 	fmt.Print("\r\033[K")
-	fmt.Print(i.prompt)
-	fmt.Print(string(i.currentInput))
-	fmt.Print("\033[?25h")
-	fmt.Printf("\r\033[%dC", i.promptLen+i.cursorPos)
+	
+	if i.inContinuation {
+		fmt.Print(string(i.currentInput))
+		fmt.Print("\033[?25h")
+		fmt.Printf("\r\033[%dC", i.cursorPos)
+	} else {
+		fmt.Print(i.prompt)
+		fmt.Print(string(i.currentInput))
+		fmt.Print("\033[?25h")
+		fmt.Printf("\r\033[%dC", i.promptLen+i.cursorPos)
+	}
 }
 
 func (i *InteractiveInput) applySuggestion() {
@@ -247,6 +291,108 @@ func (i *InteractiveInput) clearSuggestions() {
 	}
 	i.suggestions = []string{}
 	i.selectedIdx = -1
+}
+
+func (i *InteractiveInput) handleCtrlC() bool {
+	now := time.Now()
+	
+	if len(i.currentInput) > 0 {
+		i.currentInput = []rune{}
+		i.cursorPos = 0
+		i.lastCtrlC = now
+		i.inContinuation = false
+		i.multiLine = []string{}
+		i.redrawLine()
+		return false
+	}
+	
+	if !i.lastCtrlC.IsZero() && now.Sub(i.lastCtrlC) < 2*time.Second {
+		return true
+	}
+	
+	i.lastCtrlC = now
+	fmt.Print("\n(press Ctrl+C again within 2 seconds to quit)")
+	fmt.Print("\n")
+	fmt.Print(i.prompt)
+	return false
+}
+
+func (i *InteractiveInput) handleCtrlW() {
+	if i.cursorPos == 0 {
+		return
+	}
+	
+	end := i.cursorPos
+	for end > 0 && unicode.IsSpace(i.currentInput[end-1]) {
+		end--
+	}
+	
+	start := end
+	for start > 0 && !unicode.IsSpace(i.currentInput[start-1]) {
+		start--
+	}
+	
+	if start < end {
+		i.currentInput = append(i.currentInput[:start], i.currentInput[i.cursorPos:]...)
+		i.cursorPos = start
+		i.redrawLine()
+	}
+}
+
+func (i *InteractiveInput) handleCtrlU() {
+	if i.cursorPos > 0 {
+		i.currentInput = i.currentInput[i.cursorPos:]
+		i.cursorPos = 0
+		i.redrawLine()
+	}
+}
+
+func (i *InteractiveInput) handleCtrlA() {
+	i.cursorPos = 0
+	i.redrawLine()
+}
+
+func (i *InteractiveInput) handleCtrlE() {
+	i.cursorPos = len(i.currentInput)
+	i.redrawLine()
+}
+
+func (i *InteractiveInput) handleHome() {
+	i.handleCtrlA()
+}
+
+func (i *InteractiveInput) handleEnd() {
+	i.handleCtrlE()
+}
+
+func (i *InteractiveInput) handleArrowLeft() {
+	if i.cursorPos > 0 {
+		i.cursorPos--
+		i.redrawLine()
+	}
+}
+
+func (i *InteractiveInput) handleArrowRight() {
+	if i.cursorPos < len(i.currentInput) {
+		i.cursorPos++
+		i.redrawLine()
+	}
+}
+
+func (i *InteractiveInput) checkLineContinuation() bool {
+	inputStr := strings.TrimRightFunc(string(i.currentInput), unicode.IsSpace)
+	if strings.HasSuffix(inputStr, "\\") {
+		line := strings.TrimSuffix(inputStr, "\\")
+		i.multiLine = append(i.multiLine, line)
+		
+		i.currentInput = []rune{}
+		i.cursorPos = 0
+		i.inContinuation = true
+		
+		fmt.Print("\n\r")
+		return true
+	}
+	return false
 }
 
 var gitignoreChecker *GitignoreChecker
@@ -373,4 +519,38 @@ func isArrowUp(key []byte) bool {
 
 func isArrowDown(key []byte) bool {
 	return len(key) == 3 && key[0] == 27 && key[1] == '[' && key[2] == 'B'
+}
+
+func isArrowLeft(key []byte) bool {
+	return len(key) == 3 && key[0] == 27 && key[1] == '[' && key[2] == 'D'
+}
+
+func isArrowRight(key []byte) bool {
+	return len(key) == 3 && key[0] == 27 && key[1] == '[' && key[2] == 'C'
+}
+
+func isHome(key []byte) bool {
+	return (len(key) == 3 && key[0] == 27 && key[1] == '[' && key[2] == 'H') ||
+		   (len(key) == 4 && key[0] == 27 && key[1] == '[' && key[2] == '1' && key[3] == '~')
+}
+
+func isEnd(key []byte) bool {
+	return (len(key) == 3 && key[0] == 27 && key[1] == '[' && key[2] == 'F') ||
+		   (len(key) == 4 && key[0] == 27 && key[1] == '[' && key[2] == '4' && key[3] == '~')
+}
+
+func isCtrlW(key []byte) bool {
+	return len(key) == 1 && key[0] == 23
+}
+
+func isCtrlU(key []byte) bool {
+	return len(key) == 1 && key[0] == 21
+}
+
+func isCtrlE(key []byte) bool {
+	return len(key) == 1 && key[0] == 5
+}
+
+func isCtrlA(key []byte) bool {
+	return len(key) == 1 && key[0] == 1
 }
