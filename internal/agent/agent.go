@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"regexp"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/carlosarraes/lit/internal/input"
 	"github.com/carlosarraes/lit/internal/tools"
 )
 
@@ -15,6 +19,7 @@ type Agent struct {
 	client         *anthropic.Client
 	getUserMessage func() (string, bool)
 	tools          []tools.ToolDefinition
+	useInteractive bool
 }
 
 func NewAgent(client *anthropic.Client, getUserMessage func() (string, bool), tools []tools.ToolDefinition) *Agent {
@@ -22,6 +27,7 @@ func NewAgent(client *anthropic.Client, getUserMessage func() (string, bool), to
 		client:         client,
 		getUserMessage: getUserMessage,
 		tools:          tools,
+		useInteractive: true,
 	}
 }
 
@@ -29,18 +35,45 @@ func (a *Agent) Run(ctx context.Context) error {
 	conversation := []anthropic.MessageParam{}
 
 	fmt.Println("Chat with Claude (use 'ctrl-c' to quit)")
+	fmt.Println("Type @ to see file suggestions")
+
+	var interactiveInput *input.InteractiveInput
+	if a.useInteractive {
+		interactiveInput = input.NewInteractiveInput()
+	}
 
 	readUserInput := true
 	for {
 		if readUserInput {
-			fmt.Print("\u001b[94mYou\u001b[0m: ")
-			userInput, ok := a.getUserMessage()
-			if !ok {
-				fmt.Println("\nExiting chat.")
-				break
+			var userInput string
+			var err error
+			
+			if a.useInteractive && interactiveInput != nil {
+				userInput, err = interactiveInput.ReadLine()
+				if err == io.EOF {
+					fmt.Println("\nExiting chat.")
+					break
+				} else if err != nil {
+					fmt.Printf("Input error: %v\n", err)
+					continue
+				}
+			} else {
+				fmt.Print("\u001b[94mYou\u001b[0m: ")
+				input, ok := a.getUserMessage()
+				if !ok {
+					fmt.Println("\nExiting chat.")
+					break
+				}
+				userInput = input
 			}
 
-			userMessage := anthropic.NewUserMessage(anthropic.NewTextBlock(userInput))
+			if strings.TrimSpace(userInput) == "" {
+				continue
+			}
+			
+			processedInput := processAtReferences(userInput)
+			
+			userMessage := anthropic.NewUserMessage(anthropic.NewTextBlock(processedInput))
 			conversation = append(conversation, userMessage)
 		}
 
@@ -118,4 +151,20 @@ func (a *Agent) runInference(ctx context.Context, conversation []anthropic.Messa
 		Tools:     anthropicTools,
 	})
 	return message, err
+}
+
+func processAtReferences(input string) string {
+	re := regexp.MustCompile(`@([^\s]+)`)
+	
+	return re.ReplaceAllStringFunc(input, func(match string) string {
+		path := strings.TrimPrefix(match, "@")
+		
+		if strings.Contains(path, "/") || 
+		   strings.Contains(path, ".") ||
+		   !strings.Contains(path, "@") {
+			return path
+		}
+		
+		return match
+	})
 }
