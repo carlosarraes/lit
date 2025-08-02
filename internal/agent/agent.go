@@ -35,8 +35,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	conversation := []anthropic.MessageParam{}
 
 	fmt.Println("Chat with Claude (use 'ctrl-c' to quit)")
-	fmt.Println("Type @ to see file suggestions")
-
 	var interactiveInput *input.InteractiveInput
 	if a.useInteractive {
 		interactiveInput = input.NewInteractiveInput()
@@ -47,7 +45,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if readUserInput {
 			var userInput string
 			var err error
-			
+
 			if a.useInteractive && interactiveInput != nil {
 				userInput, err = interactiveInput.ReadLine()
 				if err == io.EOF {
@@ -70,9 +68,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			if strings.TrimSpace(userInput) == "" {
 				continue
 			}
-			
+
 			processedInput := processAtReferences(userInput)
-			
+
 			userMessage := anthropic.NewUserMessage(anthropic.NewTextBlock(processedInput))
 			conversation = append(conversation, userMessage)
 		}
@@ -155,16 +153,16 @@ func (a *Agent) runInference(ctx context.Context, conversation []anthropic.Messa
 
 func processAtReferences(input string) string {
 	re := regexp.MustCompile(`@([^\s]+)`)
-	
+
 	return re.ReplaceAllStringFunc(input, func(match string) string {
 		path := strings.TrimPrefix(match, "@")
-		
-		if strings.Contains(path, "/") || 
-		   strings.Contains(path, ".") ||
-		   !strings.Contains(path, "@") {
+
+		if strings.Contains(path, "/") ||
+			strings.Contains(path, ".") ||
+			!strings.Contains(path, "@") {
 			return path
 		}
-		
+
 		return match
 	})
 }

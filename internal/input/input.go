@@ -68,6 +68,9 @@ func (i *InteractiveInput) ReadLine() (string, error) {
 				fmt.Println()
 				return "", io.EOF
 			}
+		case isCtrlD(key):
+			fmt.Println()
+			return "", io.EOF
 		case isEnter(key):
 			if i.checkLineContinuation() {
 				continue
@@ -311,9 +314,6 @@ func (i *InteractiveInput) handleCtrlC() bool {
 	}
 	
 	i.lastCtrlC = now
-	fmt.Print("\n(press Ctrl+C again within 2 seconds to quit)")
-	fmt.Print("\n")
-	fmt.Print(i.prompt)
 	return false
 }
 
@@ -553,4 +553,8 @@ func isCtrlE(key []byte) bool {
 
 func isCtrlA(key []byte) bool {
 	return len(key) == 1 && key[0] == 1
+}
+
+func isCtrlD(key []byte) bool {
+	return len(key) == 1 && key[0] == 4
 }
