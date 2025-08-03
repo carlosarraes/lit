@@ -23,7 +23,7 @@ func main() {
 		return scanner.Text(), true
 	}
 
-	tools := []tools.ToolDefinition{tools.ReadFileDefinition, tools.ListFilesDefinition, tools.EditFileDefinition, tools.RipgrepDefinition}
+	tools := []tools.ToolDefinition{tools.ReadFileDefinition, tools.ListFilesDefinition, tools.EditFileDefinition, tools.RipgrepDefinition, tools.FdDefinition, tools.RmDefinition, tools.MvDefinition, tools.GitStatusDefinition, tools.GitAddDefinition, tools.GitCommitDefinition, tools.GitDiffDefinition}
 
 	agent := agent.NewAgent(&client, getUserMessage, tools)
 	if err := agent.Run(context.TODO()); err != nil {
