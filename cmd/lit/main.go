@@ -11,6 +11,8 @@ import (
 	"github.com/carlosarraes/lit/internal/tools"
 )
 
+var version = "dev"
+
 func main() {
 	client := anthropic.NewClient()
 
